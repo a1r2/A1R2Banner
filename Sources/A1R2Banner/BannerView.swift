@@ -20,9 +20,11 @@ public struct BannerView<Banner: BannerPresentable>: View {
     let banner: Banner
     #if os(iOS)
     var geometry: GeometryProxy?
-    public init(banner: Banner, geometry: GeometryProxy? = nil) {
+    var placement: BannerPlacement
+    public init(banner: Banner, geometry: GeometryProxy? = nil, placement: BannerPlacement = .adaptive) {
         self.banner = banner
         self.geometry = geometry
+        self.placement = placement
     }
     #else
     public init(banner: Banner) {
@@ -47,7 +49,17 @@ public struct BannerView<Banner: BannerPresentable>: View {
     private var content: some View {
         #if os(iOS)
         Group {
-            if let geometry = geometry {
+            if placement == .fixed {
+                // Fixed corner insets like tvOS — for banners inside a bounded
+                // container (e.g. an in-player overlay) that should hug their corner.
+                ZStack {
+                    if showBannerView {
+                        banner.makeContent()
+                            .applyBannerModifier(position: props.position, showFrom: props.showFrom)
+                            .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
+                    }
+                }
+            } else if let geometry = geometry {
                 ZStack {
                     if showBannerView {
                         banner.makeContent()
