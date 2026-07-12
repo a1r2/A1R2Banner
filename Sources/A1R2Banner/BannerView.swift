@@ -48,38 +48,42 @@ public struct BannerView<Banner: BannerPresentable>: View {
     @ViewBuilder
     private var content: some View {
         #if os(iOS)
-        Group {
-            if placement == .fixed {
-                // Fixed corner insets like tvOS — for banners inside a bounded
-                // container (e.g. an in-player overlay) that should hug their corner.
-                ZStack {
-                    if showBannerView {
-                        banner.makeContent()
-                            .applyBannerModifier(position: props.position, showFrom: props.showFrom)
-                            .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
-                    }
+        if placement == .fixed {
+            // Fixed corner insets (like tvOS). Meant to be attached as an `.overlay`
+            // on a bounded container (e.g. an in-player overlay) so it hugs THAT
+            // container's corner. It deliberately does not ignore safe area or force
+            // a screen-sized frame — the overlay bounds it.
+            ZStack {
+                if showBannerView {
+                    banner.makeContent()
+                        .applyBannerModifier(position: props.position, showFrom: props.showFrom)
+                        .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
                 }
-            } else if let geometry = geometry {
-                ZStack {
-                    if showBannerView {
-                        banner.makeContent()
-                            .applyBannerModifier(position: props.position, showFrom: props.showFrom, geometry: geometry)
-                            .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
-                    }
-                }
-            } else {
-                GeometryReader { internalGeometry in
+            }
+        } else {
+            Group {
+                if let geometry = geometry {
                     ZStack {
                         if showBannerView {
                             banner.makeContent()
-                                .applyBannerModifier(position: props.position, showFrom: props.showFrom, geometry: internalGeometry)
+                                .applyBannerModifier(position: props.position, showFrom: props.showFrom, geometry: geometry)
                                 .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
+                        }
+                    }
+                } else {
+                    GeometryReader { internalGeometry in
+                        ZStack {
+                            if showBannerView {
+                                banner.makeContent()
+                                    .applyBannerModifier(position: props.position, showFrom: props.showFrom, geometry: internalGeometry)
+                                    .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
+                            }
                         }
                     }
                 }
             }
+            .edgesIgnoringSafeArea(.all)
         }
-        .edgesIgnoringSafeArea(.all)
         #else
         ZStack {
             if showBannerView {
