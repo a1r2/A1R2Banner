@@ -16,15 +16,23 @@ import UIKit
 /// Renders one banner: content from `banner.makeContent()`, styling and anchor
 /// from `banner.bannerProperties`. iOS scales down (0.5 iPad / 0.4 iPhone) and
 /// anchors at the banner's corner; tvOS uses fixed corner insets.
-struct BannerView<Banner: BannerPresentable>: View {
+public struct BannerView<Banner: BannerPresentable>: View {
     let banner: Banner
     #if os(iOS)
     var geometry: GeometryProxy?
+    public init(banner: Banner, geometry: GeometryProxy? = nil) {
+        self.banner = banner
+        self.geometry = geometry
+    }
+    #else
+    public init(banner: Banner) {
+        self.banner = banner
+    }
     #endif
     @State private var showBannerView = false
     @State private var dismissTask: Task<Void, Never>?
 
-    var body: some View {
+    public var body: some View {
         content
             .onAppear { showBanner() }
             .onDisappear {
