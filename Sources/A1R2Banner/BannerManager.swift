@@ -63,6 +63,13 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
         tasks[nextBanner.id] = task
     }
 
+    /// Dismiss every queued banner immediately (e.g. on scene/route change).
+    public func clear() {
+        for task in tasks.values { task.cancel() }
+        tasks.removeAll()
+        items.removeAll()
+    }
+
     private func calculateOffsets(for count: Int) -> [CGFloat] {
         let maxBanners = 9
         var offsets: [CGFloat] = []
