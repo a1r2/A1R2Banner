@@ -65,6 +65,12 @@ public struct BannerView<Banner: BannerPresentable>: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+        #if os(tvOS)
+        // tvOS: hug the physical edges (like the shipping app). The title-safe
+        // area here is large enough that respecting it strands banners far from
+        // the corner. iOS/macOS keep the safe area (notch / Island / title bar).
+        .ignoresSafeArea()
+        #endif
         .onAppear { showBanner() }
         .onDisappear {
             dismissTask?.cancel()
