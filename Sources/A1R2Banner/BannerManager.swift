@@ -39,20 +39,18 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
 
         let dur = duration ?? banner.bannerProperties.duration
 
-        // Calculate offset for ALL banners including the new one.
-        let totalBanners = items.count + 1
-        let offsets = calculateOffsets(for: totalBanners)
-        let bannerOffSet = offsets.last ?? 0
-
         let nextBanner = BannerItem(
             id: UUID(),
             when: Date(),
             banner: banner,
             duration: dur,
-            offset: bannerOffSet
+            offset: 0
         )
 
         items.append(nextBanner)
+        // Offsets are scoped per position (and only among stacking banners), so
+        // banners anchored to different corners never push one another.
+        recalculateOffsets()
         log("🇺🇸 Added banner: \(nextBanner.id) - Queue count: \(items.count)")
 
         let task = Task { [weak self] in
@@ -124,9 +122,21 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
 
     private func recalculateOffsets() {
         guard !items.isEmpty else { return }
-        let offsets = calculateOffsets(for: items.count)
+        // `items` is kept in enqueue (oldest-first) order. Walk it once, keeping a
+        // per-position running count of *stacking* banners: each stacking banner
+        // gets the next offset in its own corner's pile; non-stacking banners are
+        // pinned at 0 and excluded from every count.
+        var stackCountByPosition: [BannerPosition: Int] = [:]
         for index in 0..<items.count {
-            items[index].offset = offsets[safe: index] ?? 0
+            let props = items[index].banner.bannerProperties
+            guard props.stacks else {
+                items[index].offset = 0
+                continue
+            }
+            let placeInPile = stackCountByPosition[props.position, default: 0]
+            let offsets = calculateOffsets(for: placeInPile + 1)
+            items[index].offset = offsets.last ?? 0
+            stackCountByPosition[props.position] = placeInPile + 1
         }
     }
 }

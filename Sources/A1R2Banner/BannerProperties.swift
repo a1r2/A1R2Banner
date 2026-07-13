@@ -25,6 +25,13 @@ public struct BannerProperties {
     public var fontSize: CGFloat?
     /// Where the banner anchors on screen.
     public var position: BannerPosition
+    /// Whether this banner participates in the vertical pile at its `position`.
+    ///
+    /// When `true` (default) banners sharing a `position` stack upward and clear
+    /// one at a time (the classic bottom-trailing "pile and disappear"). When
+    /// `false` the banner is a pinned singleton at its corner: it never offsets
+    /// and never pushes — nor is pushed by — other banners.
+    public var stacks: Bool
 
     public init(
         cornerRadius: Double,
@@ -36,7 +43,8 @@ public struct BannerProperties {
         duration: Double,
         position: BannerPosition,
         textColor: Color = .white,
-        fontSize: CGFloat? = nil
+        fontSize: CGFloat? = nil,
+        stacks: Bool = true
     ) {
         self.cornerRadius = cornerRadius
         self.frame = frame
@@ -48,5 +56,6 @@ public struct BannerProperties {
         self.position = position
         self.textColor = textColor
         self.fontSize = fontSize
+        self.stacks = stacks
     }
 }

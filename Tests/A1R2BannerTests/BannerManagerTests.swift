@@ -15,6 +15,8 @@ import SwiftUI
 private struct StubBanner: BannerPresentable {
     let key: String
     let dur: TimeInterval
+    var pos: BannerPosition = .topTrailing
+    var stacks: Bool = true
 
     static func == (l: StubBanner, r: StubBanner) -> Bool { l.key == r.key }
     func hash(into h: inout Hasher) { h.combine(key) }
@@ -22,7 +24,7 @@ private struct StubBanner: BannerPresentable {
     var bannerProperties: BannerProperties {
         BannerProperties(cornerRadius: 10, frame: (100, 40), fillColor: .red,
                          opacity: 1, showAnimation: nil, showFrom: .trailing,
-                         duration: dur, position: .topTrailing)
+                         duration: dur, position: pos, stacks: stacks)
     }
     func makeContent() -> AnyView { AnyView(Text(key)) }
 }
@@ -110,5 +112,61 @@ final class BannerManagerTests: XCTestCase {
         m.enqueue(StubBanner(key: "b", dur: 60))
         m.clear()
         XCTAssertTrue(m.items.isEmpty, "clear() dismisses every queued banner")
+    }
+
+    // MARK: - Per-position stacking
+
+    private func offset(_ m: BannerManager<StubBanner>, _ key: String) -> CGFloat? {
+        m.items.first { $0.banner.key == key }?.offset
+    }
+
+    func testBannersAtDifferentPositionsDoNotStack() {
+        let m = BannerManager<StubBanner>()
+        m.enqueue(StubBanner(key: "a", dur: 60, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "b", dur: 60, pos: .bottomLeading))
+        XCTAssertEqual(m.items.count, 2)
+        XCTAssertEqual(offset(m, "a"), 0)
+        XCTAssertEqual(offset(m, "b"), 0, "a banner at a different position must not be pushed up by another")
+    }
+
+    func testStackingIsScopedPerPosition() {
+        let m = BannerManager<StubBanner>()
+        m.enqueue(StubBanner(key: "a", dur: 60, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "b", dur: 60, pos: .bottomLeading))
+        m.enqueue(StubBanner(key: "c", dur: 60, pos: .topTrailing))
+        XCTAssertEqual(offset(m, "a"), 0)
+        XCTAssertEqual(offset(m, "c"), -120, "second banner at the SAME position stacks")
+        XCTAssertEqual(offset(m, "b"), 0, "the sole banner at its own position stays put")
+    }
+
+    func testNonStackingBannerStaysPinnedAtItsCorner() {
+        let m = BannerManager<StubBanner>()
+        m.enqueue(StubBanner(key: "a", dur: 60, pos: .bottomTrailing))
+        m.enqueue(StubBanner(key: "b", dur: 60, pos: .bottomTrailing, stacks: false))
+        XCTAssertEqual(offset(m, "a"), 0)
+        XCTAssertEqual(offset(m, "b"), 0, "a non-stacking banner never offsets, even sharing a position")
+    }
+
+    func testNonStackingBannerDoesNotPushLaterStackingBanner() {
+        let m = BannerManager<StubBanner>()
+        m.enqueue(StubBanner(key: "pinned", dur: 60, pos: .bottomTrailing, stacks: false))
+        m.enqueue(StubBanner(key: "piled", dur: 60, pos: .bottomTrailing))
+        XCTAssertEqual(offset(m, "piled"), 0, "a non-stacking banner is excluded from the pile count")
+    }
+
+    func testRemovalRecalculatesOffsetsPerPosition() async {
+        let m = BannerManager<StubBanner>()
+        m.enqueue(StubBanner(key: "short", dur: 0.05, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "long", dur: 60, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "other", dur: 60, pos: .bottomLeading))
+        XCTAssertEqual(offset(m, "long"), -120)
+
+        let deadline = Date().addingTimeInterval(2)
+        while offset(m, "short") != nil && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+        }
+
+        XCTAssertEqual(offset(m, "long"), 0, "remaining banner becomes first at its position after a removal")
+        XCTAssertEqual(offset(m, "other"), 0, "untouched position keeps its offset")
     }
 }
