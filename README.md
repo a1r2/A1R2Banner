@@ -1,53 +1,119 @@
 # A1R2Banner
 
-A small, content-agnostic SwiftUI banner engine: a queue with duplicate
-suppression and vertical stacking, plus position-driven rendering for tvOS and
-iOS/iPadOS. The host app owns the banner *content* and *styling*; the SDK owns
-the *engine* and *layout*.
+A content-agnostic SwiftUI banner SDK for the Liquid Glass era. The SDK owns the
+*engine* (a queue with dedup, per-position stacking, timed auto-removal) and the
+*layout*; the host owns the *content* and *styling*. Ships a batteries-included
+**Liquid Glass** banner (`GlassBanner`) you can drop in with one line.
 
-## Concept
+**Platforms:** iOS 26 · tvOS 26 · macOS 26 · Xcode 26+ (Swift tools 6.2).
 
-The host describes each banner by conforming its own type to `BannerPresentable`:
+## Install
+
+Swift Package Manager — add the package (local path shown):
+
+```swift
+.package(path: "../a1r2-banner")
+// target dependency: .product(name: "A1R2Banner", package: "A1R2Banner")
+```
+
+## Quick start
+
+### 1 — Drop in `GlassBanner` (zero boilerplate)
 
 ```swift
 import A1R2Banner
 
+@StateObject private var banners = BannerManager<GlassBanner>()
+
+// …attach once on a root/container view:
+someRootView.bannerOverlay(banners)
+
+// …fire it:
+banners.enqueue(GlassBanner(
+    title: "Saved to Favorites",
+    subtitle: "Find it under the Favorites tab",
+    systemImage: "star.fill",
+    tint: .yellow
+))
+```
+
+`GlassBanner` renders a real Liquid Glass capsule that morphs open from the top
+(Dynamic-Island style), refracts the content behind it, is interactive, and gives
+a soft haptic on iPhone. It anchors at `.topCenter` and is a singleton — a newer
+one replaces the current.
+
+### 2 — Bring your own banner type
+
+Conform any `Hashable` value to `BannerPresentable`:
+
+```swift
+enum MyBanner: Hashable { case saved, error(String) }
+
 extension MyBanner: BannerPresentable {
-    var bannerProperties: BannerProperties { /* styling + position */ }
-    func makeContent() -> AnyView { /* the app's view */ }
+    var bannerProperties: BannerProperties {
+        BannerProperties(
+            cornerRadius: 16, frame: (width: 320, height: 64),
+            fillColor: .accentColor, opacity: 1, showAnimation: .smooth,
+            showFrom: .trailing, duration: 3, position: .bottomTrailing,
+            stacks: true                     // opt into piling (see below)
+        )
+    }
+    func makeContent() -> AnyView { AnyView(MyBannerView(banner: self)) }
 }
+
+let banners = BannerManager<MyBanner>(log: { print($0) })
+banners.enqueue(.saved)                      // duration from the banner
+banners.enqueue(.error("boom"), duration: 4) // explicit override
 ```
 
-Create one manager and drive it:
+The SDK never draws your text — `makeContent()` does — so color, font, and layout
+are entirely yours. `BannerProperties` also carries styling data
+(`fillColor`, `textColor`, `fontSize`, `font`, `cornerRadius`, …) for your content
+to honor.
 
-```swift
-@MainActor let banners = BannerManager<MyBanner>(log: { print($0) })
+## Stacking: singletons by default, opt-in bottom piling
 
-banners.enqueue(.somethingHappened)           // duration from the banner
-banners.enqueue(.error("boom"), duration: 4)  // explicit override
-```
+Piling is **opt-in and bottom-only**:
 
-Attach the overlay once, on a root/container view:
+| Situation | Behavior |
+|---|---|
+| Default (`stacks: false`) | **Singleton** — a new banner replaces whatever is already at its position. No overlap, nothing off-screen. |
+| **Top** anchors (`.topLeading/.topTrailing/.topCenter`) | **Never pile**, even with `stacks: true` — a top pile would climb off-screen. Always singleton. |
+| **Bottom** anchors + `stacks: true` | Pile upward *into* the screen; spacing is derived from each banner's height + a fixed gap (not a magic ladder). |
 
-```swift
-someRootView
-    .bannerOverlay(banners)
-```
+Banners at different positions are always independent. On iOS the stacking offset
+scales by the banner's own `iOSScale` (default `nil` = the legacy 0.5 iPad / 0.4
+iPhone downscale for tvOS-sized art; `GlassBanner` uses `1` for native sizing).
 
-## Design
+## Positioning & placement
 
-- **`BannerPresentable`** — the seam. `Hashable` identity powers duplicate
-  suppression; `bannerProperties` gives styling + `position`; `makeContent()`
-  returns the app's view.
-- **`BannerManager<Banner>`** — `@MainActor ObservableObject`: enqueue, dedup,
-  offset stacking (0, −120, −240 … up to 9), timed auto-removal, injectable log.
-- **`BannerProperties` / `BannerPosition`** — styling model + explicit anchor.
-- **`BannerView` / `BannerOverlayView` / `.bannerOverlay(_:)`** — rendering.
+- **`BannerPosition`** — `.topLeading/.topTrailing/.topCenter`,
+  `.bottomLeading/.bottomTrailing/.bottomCenter`. `.topCenter` is the iPhone
+  Dynamic-Island slot.
+- **`BannerPlacement`** (iOS `BannerView` param) — `.adaptive` (full-screen
+  overlay, geometry-aware) or `.fixed` (fixed corner insets for a banner rendered
+  inside a **bounded container** as an `.overlay`, so it hugs *that* container's
+  corner). tvOS/macOS are always fixed.
 
-Platform layout: tvOS uses fixed 20-pt corner insets; iOS/iPadOS uses
-orientation- and idiom-aware geometry padding with a compensating `scaleEffect`
-(0.5 iPad / 0.4 iPhone).
+## API reference
+
+| Symbol | Role |
+|---|---|
+| `BannerPresentable` | The seam: `Hashable` (dedup) + `bannerProperties` + `makeContent()`. |
+| `BannerManager<Banner>` | `@MainActor ObservableObject` engine: `enqueue(_:duration:)`, `clear()`, `@Published items`. |
+| `BannerProperties` | Styling + `position`, `stacks`, `iOSScale`, `duration`, `font`/`fontSize`. |
+| `BannerPosition` / `BannerPlacement` | Anchor + iOS placement mode. |
+| `View.bannerOverlay(_:)` | Attach a manager's overlay once on a root view. |
+| `BannerView` | Render a single banner (used by the overlay; also usable directly). |
+| `GlassBanner` / `GlassBannerContent` | Drop-in Liquid Glass banner value + its reusable content view. |
+
+## Tests
+
+`swift test` — 23 tests covering dedup, height-derived per-position stacking,
+top-never-piles, singleton-replace, timed removal, and the `GlassBanner` data
+contract.
 
 ## Status
 
-Extracted from the iptvFaves app. Evolving — expect the API to be refined.
+Extracted from the iptvFaves app; developed standalone (see the companion
+`a1r2-banner-starter` gallery). Evolving — the API may still be refined.
