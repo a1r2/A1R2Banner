@@ -15,7 +15,7 @@ import SwiftUI
 private struct StubBanner: BannerPresentable {
     let key: String
     let dur: TimeInterval
-    var pos: BannerPosition = .topTrailing
+    var pos: BannerPosition = .bottomTrailing   // bottom anchor: can pile
     var stacks: Bool = true
     var height: CGFloat = 40
 
@@ -140,33 +140,51 @@ final class BannerManagerTests: XCTestCase {
 
     func testStackingIsScopedPerPosition() {
         let m = BannerManager<StubBanner>()
-        m.enqueue(StubBanner(key: "a", dur: 60, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "a", dur: 60, pos: .bottomTrailing))
         m.enqueue(StubBanner(key: "b", dur: 60, pos: .bottomLeading))
-        m.enqueue(StubBanner(key: "c", dur: 60, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "c", dur: 60, pos: .bottomTrailing))
         XCTAssertEqual(offset(m, "a"), 0)
         XCTAssertEqual(offset(m, "c"), -(40 + BannerStackMetrics.gap), "second banner at the SAME position stacks")
         XCTAssertEqual(offset(m, "b"), 0, "the sole banner at its own position stays put")
     }
 
-    func testNonStackingBannerStaysPinnedAtItsCorner() {
-        let m = BannerManager<StubBanner>()
-        m.enqueue(StubBanner(key: "a", dur: 60, pos: .bottomTrailing))
-        m.enqueue(StubBanner(key: "b", dur: 60, pos: .bottomTrailing, stacks: false))
-        XCTAssertEqual(offset(m, "a"), 0)
-        XCTAssertEqual(offset(m, "b"), 0, "a non-stacking banner never offsets, even sharing a position")
+    func testStacksDefaultsToFalseInBannerProperties() {
+        let props = BannerProperties(cornerRadius: 0, frame: (10, 10), fillColor: .red,
+                                     opacity: 1, showAnimation: nil, showFrom: .top,
+                                     duration: 1, position: .bottomTrailing)
+        XCTAssertFalse(props.stacks, "banners are singletons unless the host opts into piling")
     }
 
-    func testNonStackingBannerDoesNotPushLaterStackingBanner() {
+    func testTopAnchoredNeverPiles() {
         let m = BannerManager<StubBanner>()
-        m.enqueue(StubBanner(key: "pinned", dur: 60, pos: .bottomTrailing, stacks: false))
-        m.enqueue(StubBanner(key: "piled", dur: 60, pos: .bottomTrailing))
-        XCTAssertEqual(offset(m, "piled"), 0, "a non-stacking banner is excluded from the pile count")
+        // Both opt into stacking, but a top anchor must never pile.
+        m.enqueue(StubBanner(key: "a", dur: 60, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "b", dur: 60, pos: .topTrailing))
+        XCTAssertEqual(m.items.count, 1, "top anchors never pile — the newer one replaces")
+        XCTAssertEqual(m.items[0].banner.key, "b")
+        XCTAssertEqual(offset(m, "b"), 0)
+    }
+
+    func testSingletonReplacesOthersAtSamePosition() {
+        let m = BannerManager<StubBanner>()
+        m.enqueue(StubBanner(key: "a", dur: 60, pos: .bottomTrailing))               // piles
+        m.enqueue(StubBanner(key: "b", dur: 60, pos: .bottomTrailing, stacks: false)) // singleton → replaces
+        XCTAssertEqual(m.items.count, 1)
+        XCTAssertEqual(m.items[0].banner.key, "b")
+        XCTAssertEqual(offset(m, "b"), 0, "a singleton replaces whatever shared its position")
+    }
+
+    func testReplaceOnlyAffectsSamePosition() {
+        let m = BannerManager<StubBanner>()
+        m.enqueue(StubBanner(key: "a", dur: 60, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "b", dur: 60, pos: .topLeading))
+        XCTAssertEqual(m.items.count, 2, "a singleton only replaces banners sharing its position")
     }
 
     func testRemovalRecalculatesOffsetsPerPosition() async {
         let m = BannerManager<StubBanner>()
-        m.enqueue(StubBanner(key: "short", dur: 0.05, pos: .topTrailing))
-        m.enqueue(StubBanner(key: "long", dur: 60, pos: .topTrailing))
+        m.enqueue(StubBanner(key: "short", dur: 0.05, pos: .bottomTrailing))
+        m.enqueue(StubBanner(key: "long", dur: 60, pos: .bottomTrailing))
         m.enqueue(StubBanner(key: "other", dur: 60, pos: .bottomLeading))
         XCTAssertEqual(offset(m, "long"), -(40 + BannerStackMetrics.gap))
 

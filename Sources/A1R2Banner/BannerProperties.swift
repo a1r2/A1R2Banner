@@ -34,10 +34,11 @@ public struct BannerProperties {
     public var iOSScale: CGFloat?
     /// Whether this banner participates in the vertical pile at its `position`.
     ///
-    /// When `true` (default) banners sharing a `position` stack upward and clear
-    /// one at a time (the classic bottom-trailing "pile and disappear"). When
-    /// `false` the banner is a pinned singleton at its corner: it never offsets
-    /// and never pushes — nor is pushed by — other banners.
+    /// Defaults to `false`: the banner is a **singleton** at its corner — enqueuing
+    /// it replaces any banner already anchored there (no overlap, nothing climbs
+    /// off-screen). Opt in with `true` (e.g. a bottom-trailing feed) to let banners
+    /// sharing a `position` stack and clear one at a time; a stacking pile grows
+    /// *into* the screen — up from a bottom anchor, down from a top anchor.
     public var stacks: Bool
 
     public init(
@@ -53,7 +54,7 @@ public struct BannerProperties {
         fontSize: CGFloat? = nil,
         font: Font? = nil,
         iOSScale: CGFloat? = nil,
-        stacks: Bool = true
+        stacks: Bool = false
     ) {
         self.cornerRadius = cornerRadius
         self.frame = frame

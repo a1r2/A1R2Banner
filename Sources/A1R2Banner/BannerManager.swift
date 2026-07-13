@@ -50,6 +50,18 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
 
         let dur = duration ?? banner.bannerProperties.duration
 
+        // Singletons (the default, and every top-anchored banner) replace whatever
+        // is already at their position — so nothing overlaps and nothing climbs
+        // off-screen. Only opt-in bottom-anchored piles keep their siblings.
+        if !effectivelyStacks(banner) {
+            let position = banner.bannerProperties.position
+            for victim in items where victim.banner.bannerProperties.position == position {
+                tasks[victim.id]?.cancel()
+                tasks.removeValue(forKey: victim.id)
+            }
+            items.removeAll { $0.banner.bannerProperties.position == position }
+        }
+
         let nextBanner = BannerItem(
             id: UUID(),
             when: Date(),
@@ -104,22 +116,29 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
         lastRemovedID = removed.id
     }
 
+    /// A banner piles only if it opts in AND sits at a bottom anchor. Top anchors
+    /// never pile (they'd stack off-screen), so they're always singletons.
+    private func effectivelyStacks(_ banner: Banner) -> Bool {
+        let props = banner.bannerProperties
+        return props.stacks && !props.position.isTopAnchored
+    }
+
     private func recalculateOffsets() {
         guard !items.isEmpty else { return }
         // `items` is kept in enqueue (oldest-first) order. Walk it once, keeping a
-        // per-position running total of the (height + gap) of the *stacking* banners
-        // below. Each banner sits above that total, so spacing tracks the actual
-        // banner size instead of a fixed ladder. Non-stacking banners are pinned at
-        // 0 and excluded from the total.
+        // per-position running total of the (height + gap) of the *piling* banners
+        // below. Each sits above that total, so spacing tracks the actual banner
+        // size. Singletons (default + all top anchors) are pinned at 0 and excluded.
         var cumulativeByPosition: [BannerPosition: CGFloat] = [:]
         for index in 0..<items.count {
-            let props = items[index].banner.bannerProperties
-            guard props.stacks else {
+            let banner = items[index].banner
+            guard effectivelyStacks(banner) else {
                 items[index].offset = 0
                 continue
             }
+            let props = banner.bannerProperties
             let cumulative = cumulativeByPosition[props.position, default: 0]
-            items[index].offset = -cumulative      // negative = stacks upward
+            items[index].offset = -cumulative      // bottom anchors stack upward, into view
             let height = props.frame.height > 0 ? props.frame.height : BannerStackMetrics.defaultHeight
             cumulativeByPosition[props.position] = cumulative + height + BannerStackMetrics.gap
         }

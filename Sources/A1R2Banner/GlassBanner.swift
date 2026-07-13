@@ -59,8 +59,8 @@ public struct GlassBanner: BannerPresentable {
             duration: duration,
             position: position,
             textColor: .primary,
-            iOSScale: 1,   // laid out natively for iOS — no legacy downscale
-            stacks: true
+            iOSScale: 1,     // laid out natively for iOS — no legacy downscale
+            stacks: false    // an Island-style notice is a singleton — latest replaces
         )
     }
 
