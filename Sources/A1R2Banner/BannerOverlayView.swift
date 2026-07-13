@@ -19,7 +19,7 @@ struct BannerOverlayView<Banner: BannerPresentable>: View {
     var body: some View {
         ZStack {
             ForEach(manager.items.sorted { $0.when < $1.when }) { item in
-                BannerView(banner: item.banner, stackOffset: item.offset)
+                BannerView(banner: item.banner, duration: item.duration, stackOffset: item.offset)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

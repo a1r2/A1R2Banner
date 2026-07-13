@@ -45,4 +45,23 @@ final class GlassBannerTests: XCTestCase {
     func testDifferentTitlesAreDistinct() {
         XCTAssertNotEqual(GlassBanner(title: "A"), GlassBanner(title: "B"))
     }
+
+    func testSingletonNativeCapsuleContract() {
+        let p = GlassBanner(title: "Hi", subtitle: "there").bannerProperties
+        XCTAssertFalse(p.stacks, "an Island-style notice is a singleton")
+        XCTAssertEqual(p.renderScale, 1, "renders at native iOS size")
+        XCTAssertEqual(p.frame.width, 0)
+        XCTAssertEqual(p.frame.height, 64, "self-sizes; height feeds stacking")
+        XCTAssertEqual(p.cornerRadius, 28)
+        XCTAssertEqual(p.position, .topCenter)
+        XCTAssertEqual(p.accessibilityLabel, "Hi, there", "title + subtitle announced to VoiceOver")
+    }
+
+    func testDistinctByNonTitleFields() {
+        XCTAssertNotEqual(GlassBanner(title: "S", tint: .red), GlassBanner(title: "S", tint: .blue))
+        XCTAssertNotEqual(GlassBanner(title: "S", subtitle: "a"), GlassBanner(title: "S", subtitle: "b"))
+        XCTAssertNotEqual(GlassBanner(title: "S", systemImage: "star"), GlassBanner(title: "S", systemImage: "bolt"))
+        XCTAssertNotEqual(GlassBanner(title: "S", position: .topCenter), GlassBanner(title: "S", position: .topLeading))
+        XCTAssertNotEqual(GlassBanner(title: "S", duration: 3), GlassBanner(title: "S", duration: 5))
+    }
 }

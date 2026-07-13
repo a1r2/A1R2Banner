@@ -50,21 +50,20 @@ public struct GlassBanner: BannerPresentable {
 
     public var bannerProperties: BannerProperties {
         BannerProperties(
-            cornerRadius: 28,
-            frame: (width: 0, height: 64),  // content self-sizes; height feeds stacking math
-            fillColor: tint,
-            opacity: 1,
-            showAnimation: .smooth(duration: 0.4),
-            showFrom: .top,
+            frame: CGSize(width: 0, height: 64),  // content self-sizes; height feeds stacking math
             duration: duration,
             position: position,
-            textColor: .primary,
-            iOSScale: 1,     // laid out natively for iOS — no legacy downscale
-            stacks: false    // an Island-style notice is a singleton — latest replaces
+            cornerRadius: 28,
+            fillColor: tint,
+            showAnimation: .smooth(duration: 0.4),
+            showFrom: .top,
+            renderScale: 1,   // laid out natively for iOS — no legacy downscale
+            stacks: false,    // an Island-style notice is a singleton — latest replaces
+            accessibilityLabel: [title, subtitle].compactMap { $0 }.joined(separator: ", ")
         )
     }
 
-    public func makeContent() -> AnyView {
-        AnyView(GlassBannerContent(banner: self))
+    public func makeContent() -> GlassBannerContent {
+        GlassBannerContent(banner: self)
     }
 }

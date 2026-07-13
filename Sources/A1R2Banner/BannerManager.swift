@@ -13,12 +13,18 @@ import SwiftUI
 /// Tunable metrics for the vertical pile shared by all `BannerManager` instances.
 /// (Kept outside the generic type — Swift forbids static stored properties there.)
 enum BannerStackMetrics {
-    /// Vertical gap (in the banner's own, unscaled points) between piled banners
-    /// sharing a position.
+    /// Default vertical gap between piled banners sharing a position. Overridable
+    /// per `BannerManager` via `init(stackGap:)`.
     static let gap: CGFloat = 16
     /// Fallback height for self-sizing banners whose `frame.height` is 0
     /// (e.g. ``GlassBanner``), used only for stacking math.
     static let defaultHeight: CGFloat = 60
+    /// Most banners a single position may pile before the oldest is evicted, so a
+    /// pile can never grow off-screen.
+    static let maxPerPosition = 9
+    /// Grace period after a banner's duration before the model row is removed,
+    /// giving the exit transition time to finish. Keep ≥ the exit animation.
+    static let exitGrace: TimeInterval = 0.4
 }
 
 /// The banner engine: an observable queue with duplicate suppression, vertical
@@ -34,8 +40,11 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
 
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private let log: (String) -> Void
+    private let stackGap: CGFloat
 
-    public init(log: @escaping (String) -> Void = { _ in }) {
+    /// - Parameter stackGap: vertical gap between piled banners (default 16 pt).
+    public init(stackGap: CGFloat = 16, log: @escaping (String) -> Void = { _ in }) {
+        self.stackGap = stackGap
         self.log = log
     }
 
@@ -49,17 +58,22 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
         }
 
         let dur = duration ?? banner.bannerProperties.duration
+        let position = banner.bannerProperties.position
 
-        // Singletons (the default, and every top-anchored banner) replace whatever
-        // is already at their position — so nothing overlaps and nothing climbs
-        // off-screen. Only opt-in bottom-anchored piles keep their siblings.
-        if !effectivelyStacks(banner) {
-            let position = banner.bannerProperties.position
-            for victim in items where victim.banner.bannerProperties.position == position {
-                tasks[victim.id]?.cancel()
-                tasks.removeValue(forKey: victim.id)
+        if effectivelyStacks(banner) {
+            // Cap the pile: evict the oldest sibling so a stack can't grow off-screen.
+            let siblings = items.filter {
+                $0.banner.bannerProperties.position == position && effectivelyStacks($0.banner)
             }
-            items.removeAll { $0.banner.bannerProperties.position == position }
+            if siblings.count >= BannerStackMetrics.maxPerPosition, let oldest = siblings.first {
+                evict(oldest.id)
+            }
+        } else {
+            // Singleton (the default, and every top-anchored banner): replace whatever
+            // is already at this position — no overlap, nothing climbs off-screen.
+            for victimID in items.filter({ $0.banner.bannerProperties.position == position }).map(\.id) {
+                evict(victimID)
+            }
         }
 
         let nextBanner = BannerItem(
@@ -88,12 +102,31 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
     public func clear() {
         for task in tasks.values { task.cancel() }
         tasks.removeAll()
+        let lastID = items.last?.id
         items.removeAll()
+        if let lastID { lastRemovedID = lastID }
+    }
+
+    /// Dismiss a single queued banner early (cancels its timer, animates the pile).
+    public func dismiss(id: UUID) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        removeAndRecalculate(at: index)
+    }
+
+    // Cancel a banner's timer and remove it without animating the survivors
+    // (used for silent replacement / cap eviction). Records `lastRemovedID`.
+    private func evict(_ id: UUID) {
+        tasks[id]?.cancel()
+        tasks.removeValue(forKey: id)
+        items.removeAll { $0.id == id }
+        lastRemovedID = id
     }
 
     private func displayAndRemove(_ banner: BannerItem<Banner>) async {
-        let delay = banner.duration + 0.4
-        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        let delay = banner.duration + BannerStackMetrics.exitGrace
+        guard delay.isFinite else { return }
+        try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+        guard !Task.isCancelled else { return }
 
         if let index = items.firstIndex(where: { $0.id == banner.id }) {
             removeAndRecalculate(at: index)
@@ -109,10 +142,13 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
         tasks[removed.id]?.cancel()
         tasks.removeValue(forKey: removed.id)
 
-        items.remove(at: index)
+        // Animate so surviving stacked banners slide into their new offset.
+        withAnimation(removed.banner.bannerProperties.showAnimation) {
+            items.remove(at: index)
+            recalculateOffsets()
+        }
         log("🇺🇸 Removed banner \(removed.id) at index \(index). Remaining: \(items.count)")
 
-        recalculateOffsets()
         lastRemovedID = removed.id
     }
 
@@ -140,7 +176,7 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
             let cumulative = cumulativeByPosition[props.position, default: 0]
             items[index].offset = -cumulative      // bottom anchors stack upward, into view
             let height = props.frame.height > 0 ? props.frame.height : BannerStackMetrics.defaultHeight
-            cumulativeByPosition[props.position] = cumulative + height + BannerStackMetrics.gap
+            cumulativeByPosition[props.position] = cumulative + height + stackGap
         }
     }
 }

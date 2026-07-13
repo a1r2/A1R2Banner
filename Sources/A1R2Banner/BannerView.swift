@@ -17,39 +17,40 @@ import UIKit
 /// `banner.bannerProperties.position`.
 ///
 /// Layout is uniform across platforms: the view fills its container and pins the
-/// content to the requested corner with a fixed inset, **inside the safe area** —
-/// so a top banner sits below the notch / Dynamic Island / title bar, and it
-/// re-anchors correctly on rotation or window resize. On iOS the content is scaled
-/// by `iOSScale` (default 0.5 iPad / 0.4 iPhone for tvOS-sized art; `GlassBanner`
-/// uses 1).
+/// content to the requested corner with a fixed inset, **inside the safe area**
+/// (tvOS hugs the physical edge). It re-anchors on rotation / window resize. On
+/// iOS the content is scaled by `renderScale` (default 0.5 iPad / 0.4 iPhone for
+/// tvOS-sized art; `GlassBanner` uses 1). Honors Reduce Motion and posts a
+/// VoiceOver announcement when `accessibilityLabel` is set.
 public struct BannerView<Banner: BannerPresentable>: View {
     let banner: Banner
+    /// Effective visible duration. `nil` uses `bannerProperties.duration`. The
+    /// queue passes the per-enqueue override so the exit animation and the model
+    /// removal share one clock.
+    var duration: TimeInterval?
     /// Extra y-shift (unscaled points) used by the queue to stack piled banners.
     var stackOffset: CGFloat
 
-    #if os(iOS)
-    /// Retained for source compatibility. Layout is now unified and safe-area
-    /// aware, so `.adaptive` and `.fixed` render identically; a banner attached
-    /// as an `.overlay` on a bounded container hugs that container's corner either
-    /// way.
-    var placement: BannerPlacement
-
-    public init(banner: Banner, placement: BannerPlacement = .adaptive, stackOffset: CGFloat = 0) {
+    public init(banner: Banner, duration: TimeInterval? = nil, stackOffset: CGFloat = 0) {
         self.banner = banner
-        self.placement = placement
+        self.duration = duration
         self.stackOffset = stackOffset
     }
-    #else
-    public init(banner: Banner, stackOffset: CGFloat = 0) {
-        self.banner = banner
-        self.stackOffset = stackOffset
+
+    #if os(iOS)
+    @available(*, deprecated, message: "Layout is unified and safe-area aware; placement no longer affects rendering. Use init(banner:duration:stackOffset:).")
+    public init(banner: Banner, placement: BannerPlacement, duration: TimeInterval? = nil, stackOffset: CGFloat = 0) {
+        self.init(banner: banner, duration: duration, stackOffset: stackOffset)
     }
     #endif
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showBannerView = false
+    @State private var didStart = false
     @State private var dismissTask: Task<Void, Never>?
 
     private var props: BannerProperties { banner.bannerProperties }
+    private var effectiveDuration: TimeInterval { duration ?? props.duration }
 
     /// Fixed inset from the anchored edges.
     private let edgeInset: CGFloat = 20
@@ -61,7 +62,8 @@ public struct BannerView<Banner: BannerPresentable>: View {
                     .scaleEffect(contentScale, anchor: anchorPoint)
                     .padding(edgeInset)
                     .offset(y: stackOffset * contentScale)
-                    .transition(.move(edge: props.showFrom))
+                    .transition(transition)
+                    .accessibilityLabelIfPresent(props.accessibilityLabel)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
@@ -71,11 +73,20 @@ public struct BannerView<Banner: BannerPresentable>: View {
         // the corner. iOS/macOS keep the safe area (notch / Island / title bar).
         .ignoresSafeArea()
         #endif
-        .onAppear { showBanner() }
+        .onAppear {
+            // Start the show/dismiss cycle once — not on every re-appear.
+            guard !didStart else { return }
+            didStart = true
+            showBanner()
+        }
         .onDisappear {
             dismissTask?.cancel()
             dismissTask = nil
         }
+    }
+
+    private var transition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: props.showFrom)
     }
 
     private var alignment: Alignment {
@@ -103,29 +114,44 @@ public struct BannerView<Banner: BannerPresentable>: View {
 
     private var contentScale: CGFloat {
         #if os(iOS)
-        if let scale = props.iOSScale { return scale }
+        if let scale = props.renderScale { return scale }
         return UIDevice.current.userInterfaceIdiom == .pad ? 0.5 : 0.4
         #else
-        return props.iOSScale ?? 1
+        return props.renderScale ?? 1
         #endif
     }
 
     private func showBanner() {
-        withAnimation(props.showAnimation) {
+        let animation = reduceMotion ? nil : props.showAnimation
+        withAnimation(animation) {
             showBannerView = true
         }
-        dismissBanner(with: props.showAnimation, after: props.duration)
+        if let label = props.accessibilityLabel {
+            AccessibilityNotification.Announcement(label).post()
+        }
+        dismissBanner(with: animation, after: effectiveDuration)
     }
 
     private func dismissBanner(with animationType: Animation?, after delay: TimeInterval) {
-        guard let animationType = animationType else { return }
+        guard delay.isFinite else { return }
         dismissTask?.cancel()
         dismissTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
             guard !Task.isCancelled else { return }
             withAnimation(animationType) {
                 showBannerView = false
             }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func accessibilityLabelIfPresent(_ label: String?) -> some View {
+        if let label {
+            self.accessibilityElement(children: .ignore).accessibilityLabel(Text(label))
+        } else {
+            self
         }
     }
 }

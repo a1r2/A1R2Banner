@@ -14,26 +14,25 @@ import UIKit
 #endif
 
 /// The Liquid Glass content for ``GlassBanner``. Public so hosts that keep their
-/// own banner type can reuse the look from `makeContent()`:
+/// own banner type can reuse the look from `makeContent()`.
 ///
-/// ```swift
-/// func makeContent() -> AnyView {
-///     AnyView(GlassBannerContent(banner: GlassBanner(title: "Saved", systemImage: "star.fill")))
-/// }
-/// ```
-///
-/// It renders a single Liquid Glass capsule inside a `GlassEffectContainer` that
-/// **morphs open from a compact pill** — Dynamic-Island style — then settles. The
-/// glass refracts whatever sits behind it and adapts to light/dark automatically.
+/// It renders a single Liquid Glass capsule (`glassEffect`) that refracts and
+/// adapts to whatever sits behind it. When it carries a leading icon, it starts
+/// as a compact pill and **expands** to reveal the text with a bouncy reveal;
+/// icon-less banners start expanded (no empty-capsule flash). Honors Reduce Motion
+/// (no bounce/sheen/haptic) — the SDK's `BannerView` also swaps the slide-in for a
+/// fade under Reduce Motion.
 public struct GlassBannerContent: View {
     private let banner: GlassBanner
 
     public init(banner: GlassBanner) {
         self.banner = banner
+        // Start expanded when there's no icon, so the first frame is never a bare capsule.
+        _expanded = State(initialValue: banner.systemImage == nil)
     }
 
-    @Namespace private var glass
-    @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expanded: Bool
     @State private var sheen = false
 
     public var body: some View {
@@ -66,30 +65,34 @@ public struct GlassBannerContent: View {
             .padding(.vertical, 12)
             // The signature: real Liquid Glass, tinted, and interactive (flexes to touch).
             .glassEffect(.regular.tint(banner.tint.opacity(0.18)).interactive(), in: .capsule)
-            .glassEffectID("core", in: glass)
             .overlay { sheenOverlay }
         }
-        // Condense-from-the-Island: start compact and slightly up, then morph open.
-        .scaleEffect(expanded ? 1 : 0.82, anchor: .top)
         .onAppear(perform: reveal)
     }
 
     // A soft diagonal highlight that fades as the glass "catches the light" on appear.
+    @ViewBuilder
     private var sheenOverlay: some View {
-        Capsule()
-            .fill(
-                LinearGradient(
-                    colors: [.clear, .white.opacity(0.5), .clear],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+        if !reduceMotion {
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [.clear, .white.opacity(0.5), .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
-            )
-            .blendMode(.plusLighter)
-            .opacity(sheen ? 0 : 0.9)
-            .allowsHitTesting(false)
+                .blendMode(.plusLighter)
+                .opacity(sheen ? 0 : 0.9)
+                .allowsHitTesting(false)
+        }
     }
 
     private func reveal() {
+        guard !reduceMotion else {
+            expanded = true
+            return
+        }
         withAnimation(.bouncy(duration: 0.5)) { expanded = true }
         withAnimation(.easeOut(duration: 1.0)) { sheen = true }
         #if os(iOS)

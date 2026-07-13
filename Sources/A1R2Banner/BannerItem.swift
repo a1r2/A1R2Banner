@@ -17,7 +17,8 @@ public struct BannerItem<Banner: BannerPresentable>: Identifiable {
     public let when: Date
     public let banner: Banner
     public let duration: TimeInterval
-    public var offset: CGFloat
+    /// Internal layout mechanic (the in-package renderer reads it); not host API.
+    var offset: CGFloat
 
     init(id: UUID, when: Date, banner: Banner, duration: TimeInterval, offset: CGFloat = 0) {
         self.id = id
