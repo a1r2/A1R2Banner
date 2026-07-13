@@ -13,9 +13,9 @@ import SwiftUI
 /// The banner engine: an observable queue with duplicate suppression, vertical
 /// stacking, and timed auto-removal. Generic over the host's banner value.
 ///
-/// Ported from the app's `BannerManager`: made generic over `Banner`,
-/// `DDLogger` replaced by an injectable `log` closure, and the write-only
-/// `playerErrorCount` dropped. The offset math is preserved byte-for-byte.
+/// Generic over the host's banner value: `DDLogger` is replaced by an injectable
+/// `log` closure and any host-specific write-only counters are omitted. The
+/// offset math is preserved byte-for-byte.
 @MainActor
 public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
     @Published public private(set) var items: [BannerItem<Banner>] = []

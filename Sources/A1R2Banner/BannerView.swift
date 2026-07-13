@@ -50,7 +50,7 @@ public struct BannerView<Banner: BannerPresentable>: View {
         #if os(iOS)
         if placement == .fixed {
             // Fixed corner insets (like tvOS). Meant to be attached as an `.overlay`
-            // on a bounded container (e.g. an in-player overlay) so it hugs THAT
+            // on a bounded container (e.g. a card or tile) so it hugs THAT
             // container's corner. It deliberately does not ignore safe area or force
             // a screen-sized frame — the overlay bounds it.
             ZStack {

@@ -13,7 +13,7 @@
 /// - `adaptive`: orientation/idiom-aware screen-geometry padding. Right for a
 ///   full-screen overlay (the queue attached via `.bannerOverlay`).
 /// - `fixed`: fixed corner insets, like tvOS. Right for a banner rendered inside
-///   a bounded container (e.g. an in-player overlay) that should hug its corner.
+///   a bounded container (e.g. a card or tile) that should hug its corner.
 ///
 /// On tvOS placement is always fixed; this only affects iOS.
 public enum BannerPlacement: Sendable, Hashable {
