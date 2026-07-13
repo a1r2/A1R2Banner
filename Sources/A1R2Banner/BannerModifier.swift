@@ -33,6 +33,8 @@ extension View {
             self.bannerBottomTrailingPadding(geometry: geometry).transition(.move(edge: showFrom))
         case .bottomCenter:
             self.bannerBottomCenteredPadding().transition(.move(edge: showFrom))
+        case .topCenter:
+            self.bannerTopCenteredPadding().transition(.move(edge: showFrom))
         }
     }
     #endif
@@ -50,6 +52,8 @@ extension View {
             self.bannerBottomTrailingPadding().transition(.move(edge: showFrom))
         case .bottomCenter:
             self.bannerBottomCenteredPadding().transition(.move(edge: showFrom))
+        case .topCenter:
+            self.bannerTopCenteredPadding().transition(.move(edge: showFrom))
         }
     }
 
@@ -83,6 +87,14 @@ extension View {
         padding(EdgeInsets(top: 0, leading: 0, bottom: 20, trailing: 0))
             .frame(maxWidth: .infinity, alignment: .center)
             .frame(maxHeight: .infinity, alignment: .bottom)
+    }
+
+    // Top inset clears the iPhone status bar / Dynamic Island so the banner reads
+    // as an extension of it. Tune per device feel if needed.
+    func bannerTopCenteredPadding() -> some View {
+        padding(EdgeInsets(top: 60, leading: 0, bottom: 0, trailing: 0))
+            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - iOS geometry-aware padding

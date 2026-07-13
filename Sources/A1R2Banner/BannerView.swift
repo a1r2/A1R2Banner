@@ -104,11 +104,13 @@ public struct BannerView<Banner: BannerPresentable>: View {
         case .topLeading: return .topLeading
         case .bottomTrailing: return .bottomTrailing
         case .bottomCenter: return .bottom
+        case .topCenter: return .top
         }
     }
 
     private var bannerScale: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 0.5 : 0.4
+        if let scale = props.iOSScale { return scale }
+        return UIDevice.current.userInterfaceIdiom == .pad ? 0.5 : 0.4
     }
     #endif
 

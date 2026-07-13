@@ -18,4 +18,6 @@ public enum BannerPosition: Sendable, Hashable {
     case bottomLeading
     case bottomTrailing
     case bottomCenter
+    /// Top edge, horizontally centered — the iPhone Dynamic-Island slot.
+    case topCenter
 }

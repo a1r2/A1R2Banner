@@ -28,6 +28,10 @@ public struct BannerProperties {
     public var font: Font?
     /// Where the banner anchors on screen.
     public var position: BannerPosition
+    /// iOS render scale. `nil` (default) keeps the legacy device downscale
+    /// (0.5 iPad / 0.4 iPhone) used by banners designed at tvOS size. Set `1`
+    /// for content laid out natively for iOS (e.g. ``GlassBanner``).
+    public var iOSScale: CGFloat?
     /// Whether this banner participates in the vertical pile at its `position`.
     ///
     /// When `true` (default) banners sharing a `position` stack upward and clear
@@ -48,6 +52,7 @@ public struct BannerProperties {
         textColor: Color = .white,
         fontSize: CGFloat? = nil,
         font: Font? = nil,
+        iOSScale: CGFloat? = nil,
         stacks: Bool = true
     ) {
         self.cornerRadius = cornerRadius
@@ -61,6 +66,7 @@ public struct BannerProperties {
         self.textColor = textColor
         self.fontSize = fontSize
         self.font = font
+        self.iOSScale = iOSScale
         self.stacks = stacks
     }
 }
