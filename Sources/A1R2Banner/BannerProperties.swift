@@ -23,6 +23,9 @@ public struct BannerProperties {
     public var duration: Double
     public var textColor: Color
     public var fontSize: CGFloat?
+    /// An explicit font for the banner's text. Takes precedence over `fontSize`
+    /// when the host's content honors it. `nil` leaves the choice to the content.
+    public var font: Font?
     /// Where the banner anchors on screen.
     public var position: BannerPosition
     /// Whether this banner participates in the vertical pile at its `position`.
@@ -44,6 +47,7 @@ public struct BannerProperties {
         position: BannerPosition,
         textColor: Color = .white,
         fontSize: CGFloat? = nil,
+        font: Font? = nil,
         stacks: Bool = true
     ) {
         self.cornerRadius = cornerRadius
@@ -56,6 +60,7 @@ public struct BannerProperties {
         self.position = position
         self.textColor = textColor
         self.fontSize = fontSize
+        self.font = font
         self.stacks = stacks
     }
 }
