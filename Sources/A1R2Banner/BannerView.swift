@@ -13,106 +13,96 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Renders one banner: content from `banner.makeContent()`, styling and anchor
-/// from `banner.bannerProperties`. iOS scales down (0.5 iPad / 0.4 iPhone) and
-/// anchors at the banner's corner; tvOS uses fixed corner insets.
+/// Renders one banner: content from `banner.makeContent()`, anchored per
+/// `banner.bannerProperties.position`.
+///
+/// Layout is uniform across platforms: the view fills its container and pins the
+/// content to the requested corner with a fixed inset, **inside the safe area** —
+/// so a top banner sits below the notch / Dynamic Island / title bar, and it
+/// re-anchors correctly on rotation or window resize. On iOS the content is scaled
+/// by `iOSScale` (default 0.5 iPad / 0.4 iPhone for tvOS-sized art; `GlassBanner`
+/// uses 1).
 public struct BannerView<Banner: BannerPresentable>: View {
     let banner: Banner
+    /// Extra y-shift (unscaled points) used by the queue to stack piled banners.
+    var stackOffset: CGFloat
+
     #if os(iOS)
-    var geometry: GeometryProxy?
+    /// Retained for source compatibility. Layout is now unified and safe-area
+    /// aware, so `.adaptive` and `.fixed` render identically; a banner attached
+    /// as an `.overlay` on a bounded container hugs that container's corner either
+    /// way.
     var placement: BannerPlacement
-    public init(banner: Banner, geometry: GeometryProxy? = nil, placement: BannerPlacement = .adaptive) {
+
+    public init(banner: Banner, placement: BannerPlacement = .adaptive, stackOffset: CGFloat = 0) {
         self.banner = banner
-        self.geometry = geometry
         self.placement = placement
+        self.stackOffset = stackOffset
     }
     #else
-    public init(banner: Banner) {
+    public init(banner: Banner, stackOffset: CGFloat = 0) {
         self.banner = banner
+        self.stackOffset = stackOffset
     }
     #endif
+
     @State private var showBannerView = false
     @State private var dismissTask: Task<Void, Never>?
 
-    public var body: some View {
-        content
-            .onAppear { showBanner() }
-            .onDisappear {
-                dismissTask?.cancel()
-                dismissTask = nil
-            }
-    }
-
     private var props: BannerProperties { banner.bannerProperties }
 
-    @ViewBuilder
-    private var content: some View {
-        #if os(iOS)
-        if placement == .fixed {
-            // Fixed corner insets (like tvOS). Meant to be attached as an `.overlay`
-            // on a bounded container (e.g. a card or tile) so it hugs THAT
-            // container's corner. It deliberately does not ignore safe area or force
-            // a screen-sized frame — the overlay bounds it.
-            ZStack {
-                if showBannerView {
-                    banner.makeContent()
-                        .applyBannerModifier(position: props.position, showFrom: props.showFrom)
-                        .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
-                }
-            }
-        } else {
-            Group {
-                if let geometry = geometry {
-                    ZStack {
-                        if showBannerView {
-                            banner.makeContent()
-                                .applyBannerModifier(position: props.position, showFrom: props.showFrom, geometry: geometry)
-                                .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
-                        }
-                    }
-                } else {
-                    GeometryReader { internalGeometry in
-                        ZStack {
-                            if showBannerView {
-                                banner.makeContent()
-                                    .applyBannerModifier(position: props.position, showFrom: props.showFrom, geometry: internalGeometry)
-                                    .scaleEffect(bannerScale, anchor: bannerAnchorPoint)
-                            }
-                        }
-                    }
-                }
-            }
-            .edgesIgnoringSafeArea(.all)
-        }
-        #else
+    /// Fixed inset from the anchored edges.
+    private let edgeInset: CGFloat = 20
+
+    public var body: some View {
         ZStack {
             if showBannerView {
                 banner.makeContent()
-                    .applyBannerModifier(position: props.position, showFrom: props.showFrom)
+                    .scaleEffect(contentScale, anchor: anchorPoint)
+                    .padding(edgeInset)
+                    .offset(y: stackOffset * contentScale)
+                    .transition(.move(edge: props.showFrom))
             }
         }
-        .edgesIgnoringSafeArea(.all)
-        #endif
-    }
-
-    #if os(iOS)
-    // Anchor the scaleEffect at the banner's corner so it stays put when scaled.
-    private var bannerAnchorPoint: UnitPoint {
-        switch props.position {
-        case .topTrailing: return .topTrailing
-        case .bottomLeading: return .bottomLeading
-        case .topLeading: return .topLeading
-        case .bottomTrailing: return .bottomTrailing
-        case .bottomCenter: return .bottom
-        case .topCenter: return .top
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+        .onAppear { showBanner() }
+        .onDisappear {
+            dismissTask?.cancel()
+            dismissTask = nil
         }
     }
 
-    private var bannerScale: CGFloat {
+    private var alignment: Alignment {
+        switch props.position {
+        case .topLeading: return .topLeading
+        case .topTrailing: return .topTrailing
+        case .topCenter: return .top
+        case .bottomLeading: return .bottomLeading
+        case .bottomTrailing: return .bottomTrailing
+        case .bottomCenter: return .bottom
+        }
+    }
+
+    // Anchor the scaleEffect at the same corner so scaling doesn't drift it away.
+    private var anchorPoint: UnitPoint {
+        switch props.position {
+        case .topLeading: return .topLeading
+        case .topTrailing: return .topTrailing
+        case .topCenter: return .top
+        case .bottomLeading: return .bottomLeading
+        case .bottomTrailing: return .bottomTrailing
+        case .bottomCenter: return .bottom
+        }
+    }
+
+    private var contentScale: CGFloat {
+        #if os(iOS)
         if let scale = props.iOSScale { return scale }
         return UIDevice.current.userInterfaceIdiom == .pad ? 0.5 : 0.4
+        #else
+        return props.iOSScale ?? 1
+        #endif
     }
-    #endif
 
     private func showBanner() {
         withAnimation(props.showAnimation) {

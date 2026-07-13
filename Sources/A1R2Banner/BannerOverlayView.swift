@@ -9,51 +9,19 @@
 
 
 import SwiftUI
-#if os(iOS)
-import UIKit
-#endif
 
-/// The stack of currently-queued banners, oldest first. Drives its layout from
-/// the manager. On iOS the stacking offset is scaled to match `BannerView`'s
-/// `scaleEffect` (0.5 iPad / 0.4 iPhone).
+/// The stack of currently-queued banners, oldest first. Each `BannerView` fills
+/// the overlay and pins itself to its own corner (safe-area aware), so the
+/// container tracks any size — rotation, split view, or a resized macOS window.
 struct BannerOverlayView<Banner: BannerPresentable>: View {
     @ObservedObject var manager: BannerManager<Banner>
 
     var body: some View {
-        #if os(iOS)
-        GeometryReader { geometry in
-            bannersStack(geometry: geometry)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .edgesIgnoringSafeArea(.all)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #else
-        bannersStack(geometry: nil)
-        #endif
-    }
-
-    #if os(iOS)
-    // The stacking offset is in the banner's own points, so scale it by the SAME
-    // factor the banner renders at — honoring `iOSScale` (e.g. GlassBanner at 1×)
-    // rather than a hard-coded device factor.
-    private func scaleFactor(for item: BannerItem<Banner>) -> CGFloat {
-        if let scale = item.banner.bannerProperties.iOSScale { return scale }
-        return UIDevice.current.userInterfaceIdiom == .pad ? 0.5 : 0.4
-    }
-    #endif
-
-    @ViewBuilder
-    private func bannersStack(geometry: GeometryProxy?) -> some View {
-        ForEach(manager.items.sorted { $0.when < $1.when }) { item in
-            #if os(iOS)
-            if let geometry = geometry {
-                BannerView(banner: item.banner, geometry: geometry)
-                    .offset(y: item.offset * scaleFactor(for: item))
+        ZStack {
+            ForEach(manager.items.sorted { $0.when < $1.when }) { item in
+                BannerView(banner: item.banner, stackOffset: item.offset)
             }
-            #else
-            BannerView(banner: item.banner)
-                .offset(y: item.offset)
-            #endif
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
