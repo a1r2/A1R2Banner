@@ -51,7 +51,7 @@ public struct GlassBanner: BannerPresentable {
     public var bannerProperties: BannerProperties {
         BannerProperties(
             cornerRadius: 28,
-            frame: (width: 0, height: 0),   // content sizes itself; glass hugs it
+            frame: (width: 0, height: 64),  // content self-sizes; height feeds stacking math
             fillColor: tint,
             opacity: 1,
             showAnimation: .smooth(duration: 0.4),

@@ -17,12 +17,13 @@ private struct StubBanner: BannerPresentable {
     let dur: TimeInterval
     var pos: BannerPosition = .topTrailing
     var stacks: Bool = true
+    var height: CGFloat = 40
 
     static func == (l: StubBanner, r: StubBanner) -> Bool { l.key == r.key }
     func hash(into h: inout Hasher) { h.combine(key) }
 
     var bannerProperties: BannerProperties {
-        BannerProperties(cornerRadius: 10, frame: (100, 40), fillColor: .red,
+        BannerProperties(cornerRadius: 10, frame: (100, height), fillColor: .red,
                          opacity: 1, showAnimation: nil, showFrom: .trailing,
                          duration: dur, position: pos, stacks: stacks)
     }
@@ -46,13 +47,21 @@ final class BannerManagerTests: XCTestCase {
         XCTAssertEqual(m.items.count, 1, "same identity must not double-enqueue")
     }
 
-    func testSecondBannerStacksWith120Offset() {
+    func testSecondBannerStacksByFirstHeightPlusGap() {
         let m = BannerManager<StubBanner>()
-        m.enqueue(StubBanner(key: "a", dur: 5))
+        m.enqueue(StubBanner(key: "a", dur: 5))   // height 40
         m.enqueue(StubBanner(key: "b", dur: 5))
         XCTAssertEqual(m.items.count, 2)
-        // enqueue assigns the last computed offset to the newest item.
-        XCTAssertEqual(m.items[1].offset, -120)
+        // The step is the banner below's height + the stack gap — not a magic ladder.
+        XCTAssertEqual(m.items[1].offset, -(40 + BannerStackMetrics.gap))
+    }
+
+    func testTallerBannerBelowProducesLargerStep() {
+        let m = BannerManager<StubBanner>()
+        m.enqueue(StubBanner(key: "tall", dur: 60, height: 100))
+        m.enqueue(StubBanner(key: "b", dur: 60))
+        XCTAssertEqual(m.items[1].offset, -(100 + BannerStackMetrics.gap),
+                       "spacing tracks the actual height of the banner below")
     }
 
     func testDurationDefaultsFromBannerWhenNotOverridden() {
@@ -67,13 +76,13 @@ final class BannerManagerTests: XCTestCase {
         XCTAssertEqual(m.items[0].duration, 2)
     }
 
-    func testThirdBannerStacksAt240() {
+    func testThirdBannerStacksByTwiceHeightPlusGap() {
         let m = BannerManager<StubBanner>()
         m.enqueue(StubBanner(key: "a", dur: 60))
         m.enqueue(StubBanner(key: "b", dur: 60))
         m.enqueue(StubBanner(key: "c", dur: 60))
         XCTAssertEqual(m.items.count, 3)
-        XCTAssertEqual(m.items[2].offset, -240)
+        XCTAssertEqual(m.items[2].offset, -2 * (40 + BannerStackMetrics.gap))
     }
 
     func testBannerAutoRemovesAfterDuration() async {
@@ -135,7 +144,7 @@ final class BannerManagerTests: XCTestCase {
         m.enqueue(StubBanner(key: "b", dur: 60, pos: .bottomLeading))
         m.enqueue(StubBanner(key: "c", dur: 60, pos: .topTrailing))
         XCTAssertEqual(offset(m, "a"), 0)
-        XCTAssertEqual(offset(m, "c"), -120, "second banner at the SAME position stacks")
+        XCTAssertEqual(offset(m, "c"), -(40 + BannerStackMetrics.gap), "second banner at the SAME position stacks")
         XCTAssertEqual(offset(m, "b"), 0, "the sole banner at its own position stays put")
     }
 
@@ -159,7 +168,7 @@ final class BannerManagerTests: XCTestCase {
         m.enqueue(StubBanner(key: "short", dur: 0.05, pos: .topTrailing))
         m.enqueue(StubBanner(key: "long", dur: 60, pos: .topTrailing))
         m.enqueue(StubBanner(key: "other", dur: 60, pos: .bottomLeading))
-        XCTAssertEqual(offset(m, "long"), -120)
+        XCTAssertEqual(offset(m, "long"), -(40 + BannerStackMetrics.gap))
 
         let deadline = Date().addingTimeInterval(2)
         while offset(m, "short") != nil && Date() < deadline {

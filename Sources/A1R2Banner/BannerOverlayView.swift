@@ -33,8 +33,12 @@ struct BannerOverlayView<Banner: BannerPresentable>: View {
     }
 
     #if os(iOS)
-    private var bannerScaleFactor: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 0.5 : 0.4
+    // The stacking offset is in the banner's own points, so scale it by the SAME
+    // factor the banner renders at — honoring `iOSScale` (e.g. GlassBanner at 1×)
+    // rather than a hard-coded device factor.
+    private func scaleFactor(for item: BannerItem<Banner>) -> CGFloat {
+        if let scale = item.banner.bannerProperties.iOSScale { return scale }
+        return UIDevice.current.userInterfaceIdiom == .pad ? 0.5 : 0.4
     }
     #endif
 
@@ -44,7 +48,7 @@ struct BannerOverlayView<Banner: BannerPresentable>: View {
             #if os(iOS)
             if let geometry = geometry {
                 BannerView(banner: item.banner, geometry: geometry)
-                    .offset(y: item.offset * bannerScaleFactor)
+                    .offset(y: item.offset * scaleFactor(for: item))
             }
             #else
             BannerView(banner: item.banner)

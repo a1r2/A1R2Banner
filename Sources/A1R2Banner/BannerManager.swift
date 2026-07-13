@@ -10,6 +10,17 @@
 
 import SwiftUI
 
+/// Tunable metrics for the vertical pile shared by all `BannerManager` instances.
+/// (Kept outside the generic type — Swift forbids static stored properties there.)
+enum BannerStackMetrics {
+    /// Vertical gap (in the banner's own, unscaled points) between piled banners
+    /// sharing a position.
+    static let gap: CGFloat = 16
+    /// Fallback height for self-sizing banners whose `frame.height` is 0
+    /// (e.g. ``GlassBanner``), used only for stacking math.
+    static let defaultHeight: CGFloat = 60
+}
+
 /// The banner engine: an observable queue with duplicate suppression, vertical
 /// stacking, and timed auto-removal. Generic over the host's banner value.
 ///
@@ -68,33 +79,6 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
         items.removeAll()
     }
 
-    private func calculateOffsets(for count: Int) -> [CGFloat] {
-        let maxBanners = 9
-        var offsets: [CGFloat] = []
-
-        let validCount = min(count, maxBanners)
-
-        for i in 1...validCount {
-            let offset: CGFloat
-            switch i {
-            case 1: offset = 0
-            case 2: offset = 120
-            case 3: offset = 240
-            case 4: offset = 360
-            case 5: offset = 480
-            case 6: offset = 600
-            case 7: offset = 720
-            case 8: offset = 840
-            case 9: offset = 960
-            default: offset = 0
-            }
-            let value = offset == 0 ? 0 : -offset
-            offsets.append(value)
-        }
-
-        return offsets
-    }
-
     private func displayAndRemove(_ banner: BannerItem<Banner>) async {
         let delay = banner.duration + 0.4
         try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -123,20 +107,21 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
     private func recalculateOffsets() {
         guard !items.isEmpty else { return }
         // `items` is kept in enqueue (oldest-first) order. Walk it once, keeping a
-        // per-position running count of *stacking* banners: each stacking banner
-        // gets the next offset in its own corner's pile; non-stacking banners are
-        // pinned at 0 and excluded from every count.
-        var stackCountByPosition: [BannerPosition: Int] = [:]
+        // per-position running total of the (height + gap) of the *stacking* banners
+        // below. Each banner sits above that total, so spacing tracks the actual
+        // banner size instead of a fixed ladder. Non-stacking banners are pinned at
+        // 0 and excluded from the total.
+        var cumulativeByPosition: [BannerPosition: CGFloat] = [:]
         for index in 0..<items.count {
             let props = items[index].banner.bannerProperties
             guard props.stacks else {
                 items[index].offset = 0
                 continue
             }
-            let placeInPile = stackCountByPosition[props.position, default: 0]
-            let offsets = calculateOffsets(for: placeInPile + 1)
-            items[index].offset = offsets.last ?? 0
-            stackCountByPosition[props.position] = placeInPile + 1
+            let cumulative = cumulativeByPosition[props.position, default: 0]
+            items[index].offset = -cumulative      // negative = stacks upward
+            let height = props.frame.height > 0 ? props.frame.height : BannerStackMetrics.defaultHeight
+            cumulativeByPosition[props.position] = cumulative + height + BannerStackMetrics.gap
         }
     }
 }
