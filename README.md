@@ -1,5 +1,10 @@
 # A1R2Banner
 
+[![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://swift.org)
+[![Platforms](https://img.shields.io/badge/Platforms-iOS%2026%20%C2%B7%20tvOS%2026%20%C2%B7%20macOS%2026-0A84FF)](#)
+[![SPM](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen)](https://swift.org/package-manager)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+
 A content-agnostic SwiftUI banner SDK for the Liquid Glass era. The SDK owns the
 **engine** (a queue with de-duplication, per-position stacking, and timed
 auto-removal) and the **layout**; your app owns the **content** and **styling**.
@@ -12,14 +17,31 @@ in with a single line.
 
 ## Install
 
-Swift Package Manager. In Xcode: **File ▸ Add Package Dependencies… ▸ Add Local…**
-and pick the `a1r2-banner` folder. Or in a `Package.swift`:
+### Xcode
+
+**File ▸ Add Package Dependencies…**, then paste:
+
+```
+https://github.com/a1r2/A1R2Banner.git
+```
+
+### Package.swift
 
 ```swift
-.package(path: "../a1r2-banner"),
-// then, in your target:
-.product(name: "A1R2Banner", package: "A1R2Banner"),
+dependencies: [
+    .package(url: "https://github.com/a1r2/A1R2Banner.git", branch: "main"),
+],
+targets: [
+    .target(
+        name: "YourApp",
+        dependencies: [
+            .product(name: "A1R2Banner", package: "A1R2Banner"),
+        ]),
+]
 ```
+
+The public surface is stable but still pre-1.0, so `branch: "main"` tracks the
+tip. To pin instead, use `.package(url: ..., revision: "<commit-sha>")`.
 
 ---
 
@@ -163,6 +185,12 @@ swift test
 34 tests covering de-duplication, height-derived per-position stacking,
 top-never-piles, singleton-replace, timed removal, task cancellation, and the
 `GlassBanner` data contract.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ---
 
