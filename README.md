@@ -25,11 +25,13 @@ in with a single line.
 https://github.com/a1r2/A1R2Banner.git
 ```
 
+Choose **Up to Next Minor Version**, starting at **0.1.0**.
+
 ### Package.swift
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/a1r2/A1R2Banner.git", branch: "main"),
+    .package(url: "https://github.com/a1r2/A1R2Banner.git", .upToNextMinor(from: "0.1.0")),
 ],
 targets: [
     .target(
@@ -40,8 +42,30 @@ targets: [
 ]
 ```
 
-The public surface is stable but still pre-1.0, so `branch: "main"` tracks the
-tip. To pin instead, use `.package(url: ..., revision: "<commit-sha>")`.
+The recommended integration is the versioned **0.1.0** release, allowing compatible
+0.1.x updates. The SDK remains pre-1.0; review migration notes before moving to a
+new minor version. For an exact pin, use `.package(url: ..., exact: "0.1.0")`.
+Consumers intentionally tracking development can use `branch: "main"`, or
+`revision: "<commit-sha>"` for a particular development snapshot.
+
+### 0.1.0 — first versioned release
+
+- Container-adaptive, device-independent sizing with bounded custom content.
+- `maximumWidth` provides intentional content-width control (default 560 pt).
+- Built-in title, subtitle and symbols default to white; `textColor` provides an
+  explicit override. Custom SwiftUI content retains caller-owned styling.
+- Measured stacking, clipping and interaction boundaries adapt to the host region.
+- Adaptive layout verified in iPhone, iPad and tvOS simulators, plus macOS hosting.
+
+**Behavior change:** `renderScale: nil` now means native/adaptive scale 1 everywhere;
+automatic iPhone 0.4 / iPad 0.5 scaling is removed. Explicit positive finite scales
+remain available for intentional artwork scaling. Existing initializer signatures
+remain source-compatible. See [migration guidance](#migrating-from-device-scaling).
+
+The host owns safe-area placement and supplies the usable region. Supported
+platforms remain iOS 26, tvOS 26 and macOS 26. Arbitrary and future/foldable host
+geometry needs no device-specific sizing; full visionOS/glasses support is not
+claimed.
 
 ---
 
@@ -326,5 +350,6 @@ MIT — see [LICENSE](LICENSE).
 
 ## Status
 
-Extracted from the iptvFaves app and developed standalone. The public surface is
-stable but still evolving; pin a commit if you depend on it.
+Extracted from the iptvFaves app and developed standalone. **0.1.0** is the first
+versioned SDK release. Use the version-based dependency above for released code;
+the pre-1.0 public surface is still evolving.
