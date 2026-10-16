@@ -22,8 +22,8 @@ public struct BannerView<Banner: BannerPresentable>: View {
     /// queue passes the per-enqueue override so the exit animation and the model
     /// removal share one clock.
     var duration: TimeInterval?
-    /// Legacy stacking reservation in host points, clamped to the host height.
-    /// Manager overlays instead stack using measured content heights.
+    /// Signed vertical translation, multiplied by an explicit renderScale.
+    /// Manager overlays accumulate actual measured content heights.
     var stackOffset: CGFloat
 
     public init(banner: Banner, duration: TimeInterval? = nil, stackOffset: CGFloat = 0) {
@@ -40,20 +40,25 @@ public struct BannerView<Banner: BannerPresentable>: View {
     #endif
 
     public var body: some View {
-        BannerRegionLayout(position: banner.bannerProperties.position, offset: stackOffset) {
-            BannerPresentation(banner: banner, duration: duration)
+        BannerRegionLayout(position: banner.bannerProperties.position) {
+            BannerPresentation(banner: banner, duration: duration, stackOffset: stackOffset)
         }
         .clipped()
+        .modifier(BannerHostHits())
     }
 }
 
-/// Intrinsic banner surface, shared by direct rendering and measured stacks.
+/// Intrinsic, bounded content stays measured throughout its show/dismiss cycle.
+/// Presentation transforms its drawing without changing stack allocation.
 struct BannerPresentation<Banner: BannerPresentable>: View {
     let banner: Banner
     var duration: TimeInterval?
+    var stackOffset: CGFloat = 0
 
+    @Environment(\.layoutDirection) private var direction
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showBannerView = false
+    @State private var isDrawing = false
     @State private var didStart = false
     @State private var dismissTask: Task<Void, Never>?
 
@@ -61,22 +66,15 @@ struct BannerPresentation<Banner: BannerPresentable>: View {
     private var effectiveDuration: TimeInterval { duration ?? props.duration }
 
     var body: some View {
-        ZStack {
-            if showBannerView {
-                BannerContentLayout(maximumWidth: props.maximumWidth, scale: scale) {
-                    banner.makeContent()
-                        .scaleEffect(scale, anchor: .topLeading)
-                }
-                .clipped()
-                .contentShape(Rectangle())
-                .transition(reduceMotion ? .opacity : .move(edge: props.showFrom))
-                .accessibilityLabelIfPresent(props.accessibilityLabel)
-            }
+        BannerContentLayout(maximumWidth: props.maximumWidth, scale: scale) {
+            banner.makeContent().scaleEffect(scale, anchor: .topLeading)
         }
-        // Bound both drawing and interaction during the slide transition, while
-        // leaving the surrounding overlay's empty space available to the host.
         .clipped()
         .contentShape(Rectangle())
+        .modifier(BannerMotion(progress: showBannerView ? 0 : 1,
+            edge: props.showFrom, direction: direction,
+            offset: stackOffset * scale, reduceMotion: reduceMotion, isDrawing: isDrawing))
+        .accessibilityLabelIfPresent(props.accessibilityLabel)
         .onAppear {
             guard !didStart else { return }
             didStart = true
@@ -92,6 +90,7 @@ struct BannerPresentation<Banner: BannerPresentable>: View {
 
     private func showBanner() {
         let animation = reduceMotion ? nil : props.showAnimation
+        isDrawing = true
         withAnimation(animation) {
             showBannerView = true
         }
@@ -107,8 +106,10 @@ struct BannerPresentation<Banner: BannerPresentable>: View {
         dismissTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            withAnimation(animationType) {
+            withAnimation(animationType, completionCriteria: .removed) {
                 showBannerView = false
+            } completion: {
+                isDrawing = false
             }
         }
     }

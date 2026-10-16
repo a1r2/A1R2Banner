@@ -88,7 +88,20 @@ final class HostedLayoutTests: XCTestCase {
     private var window: UIWindow?
     #endif
 
-    private func host<V: View>(_ view: V, size: CGSize) async {
+    override func tearDown() async throws {
+        #if os(macOS)
+        window?.orderOut(nil)
+        window?.contentView = nil
+        #else
+        window?.isHidden = true
+        window?.rootViewController = nil
+        #endif
+        window = nil
+        NativeFrames.views = [:]
+        try await super.tearDown()
+    }
+
+    private func host<V: View>(_ view: V, size: CGSize, animated: Bool = false) async {
         frames = [:]
         NativeFrames.views = [:]
         #if os(macOS)
@@ -96,7 +109,7 @@ final class HostedLayoutTests: XCTestCase {
         #else
         window?.isHidden = true
         #endif
-        let root = view.transaction { $0.disablesAnimations = true }.frame(width: size.width, height: size.height)
+        let root = view.transaction { if !animated { $0.disablesAnimations = true } }.frame(width: size.width, height: size.height)
             .record("host")
         #if os(macOS)
         _ = NSApplication.shared
@@ -429,7 +442,94 @@ final class HostedLayoutTests: XCTestCase {
         }
     }
 
+    func testHostOwnsReservedUsableRegion() async throws {
+        await host(Color.clear.overlay {
+            BannerView(banner: ProbeBanner(kind: 0)).record("usable")
+                .padding(EdgeInsets(top: 30, leading: 11, bottom: 19, trailing: 23))
+        }, size: CGSize(width: 360, height: 300))
+        let region = try XCTUnwrap(frames["usable"])
+        let content = try XCTUnwrap(frames["content0"])
+        contained(content, in: region)
+        XCTAssertEqual(content.maxX, region.maxX - 20, accuracy: 1)
+        XCTAssertEqual(content.minY, region.minY + 20, accuracy: 1)
+    }
+
+    func testLayoutSettlesAfterMotionAndZeroWidthResizing() async throws {
+        let geometry = ChangingRegion()
+        LayoutPasses.count = 0
+        await host(StableLayoutProbe(geometry: geometry), size: CGSize(width: 800, height: 400), animated: true)
+        for width: CGFloat in [0, 1, 12, 44, 120, 800, 360] {
+            geometry.width = width
+            try await Task.sleep(for: .milliseconds(300))
+            refreshFrames()
+            let before = LayoutPasses.count
+            let frame = try XCTUnwrap(frames["stable-region"])
+            try await Task.sleep(for: .milliseconds(150))
+            XCTAssertEqual(LayoutPasses.count, before, "unchanged geometry must stop invalidating layout at width \(width)")
+            refreshFrames()
+            XCTAssertEqual(try XCTUnwrap(frames["stable-region"]), frame)
+            XCTAssertEqual(frame.width, width, accuracy: 1)
+        }
+    }
+
+    func testSpringOvershootVisibilityUsesAnimationCompletion() async throws {
+        for drawing in [true, false] {
+            await host(Color.black.overlay {
+                BannerRegionLayout(position: .topTrailing) {
+                    Color.red.frame(width: 80, height: 40)
+                        .modifier(BannerMotion(progress: 1.1, edge: .leading, direction: .leftToRight,
+                                               offset: 0, reduceMotion: false, isDrawing: drawing))
+                }.clipped()
+            }, size: CGSize(width: 360, height: 300))
+            let image = try snapshot("spring-overshoot-\(drawing)")
+            var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            bytes.withUnsafeMutableBytes { buffer in
+                let context = CGContext(data: buffer.baseAddress, width: image.width, height: image.height,
+                    bitsPerComponent: 8, bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            }
+            let redPixels = stride(from: 0, to: bytes.count, by: 4).filter {
+                bytes[$0] > 180 && bytes[$0 + 1] < 80 && bytes[$0 + 2] < 80
+            }.count
+            if drawing { XCTAssertGreaterThan(redPixels, 0, "spring overshoot is not animation completion") }
+            else { XCTAssertEqual(redPixels, 0, "completed drawing is hidden while measurement remains") }
+        }
+    }
+
     #if os(macOS)
+    func testMovingHitFootprintIsClippedOnlyByHost() async throws {
+        var bannerHits = 0
+        var backgroundHits = 0
+        await host(Color.green.onTapGesture { backgroundHits += 1 }.overlay {
+            BannerRegionLayout(position: .topCenter) {
+                Color.red.frame(width: 80, height: 40).onTapGesture { bannerHits += 1 }
+                    .modifier(BannerMotion(progress: 0.5, edge: .top, direction: .leftToRight,
+                                           offset: 0, reduceMotion: false))
+            }
+            .frame(width: 240, height: 100).clipped().modifier(BannerHostHits())
+                .record("moving-host")
+        }, size: CGSize(width: 360, height: 300))
+        let region = try XCTUnwrap(frames["moving-host"])
+        let window = try XCTUnwrap(window)
+        func click(y: CGFloat) {
+            for type: NSEvent.EventType in [.leftMouseDown, .leftMouseUp] {
+                window.sendEvent(NSEvent.mouseEvent(with: type,
+                    location: CGPoint(x: region.midX, y: 300 - y), modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 1, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)!)
+            }
+        }
+        click(y: region.minY + 5)
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(bannerHits, 1, "translated visible content remains interactive")
+        click(y: region.minY - 15)
+        click(y: region.minY + 25)
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(bannerHits, 1, "clipped overflow and the resting footprint must not receive hits")
+        XCTAssertEqual(backgroundHits, 2)
+    }
+
     func testPublicOverlayPassesBackgroundClicksAndBoundsAnimatedHits() async throws {
         var backgroundHits = 0
         TapObservation.hits = 0
@@ -683,3 +783,32 @@ private struct TapBanner: BannerPresentable {
     }
 }
 #endif
+
+private enum LayoutPasses {
+    private static let lock = NSLock()
+    private static var value = 0
+    static var count: Int {
+        get { lock.lock(); defer { lock.unlock() }; return value }
+        set { lock.lock(); defer { lock.unlock() }; value = newValue }
+    }
+    static func measured() { lock.lock(); defer { lock.unlock() }; value += 1 }
+}
+
+private struct CountedLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        LayoutPasses.measured()
+        return subviews.first?.sizeThatFits(proposal) ?? .zero
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(bounds.size))
+    }
+}
+private struct StableLayoutProbe: View {
+    @ObservedObject var geometry: ChangingRegion
+    var body: some View {
+        CountedLayout {
+            BannerView(banner: MotionBanner(position: .topTrailing, duration: .infinity, animation: .linear(duration: 0.1)))
+        }
+        .frame(width: geometry.width, height: 40).record("stable-region")
+    }
+}

@@ -190,8 +190,9 @@ it never selects a scale based on device identity. Positive finite scales are
 honored without an arbitrary range cutoff; other values fall back to 1. Invalid/nonfinite
 width limits fall back to 560; negative limits become zero. `frame` remains a
 custom-content hint, and the manager retains internal legacy offset estimates,
-but rendered stacks no longer use those estimates. A direct `BannerView`'s
-legacy `stackOffset` is a host-point reservation clamped inside its region.
+but rendered stacks do not use those estimates. A direct `BannerView`'s
+`stackOffset` is a signed vertical presentation translation, multiplied by the
+effective explicit scale; it does not change the measured stack allocation.
 
 ### Foreground ownership
 
@@ -292,8 +293,9 @@ owns its show/dismiss cycle and honors a per-enqueue duration override. Layout
 reads the manager's gap and measures content; queue offset estimates are retained
 internally but no longer determine rendered placement.
 
-There is no SDK `GeometryReader`, global-screen lookup, orientation lookup or
-physical-device sizing branch. The original iOS-only `UIDevice` idiom check has
+Sizing uses SwiftUI `Layout`, with no global-screen lookup, orientation lookup or
+physical-device sizing branch. A background `GeometryReader` resolves moving hit
+bounds only; its values never control sizing or placement. The original iOS-only `UIDevice` idiom check has
 been removed. Remaining platform conditionals preserve only the deprecated iOS
 placement initializer and iOS haptic feedback in glass content. The package
 manifest remains iOS 26 / tvOS 26 / macOS 26, Swift tools 6.2, Swift 5 language mode.
@@ -316,6 +318,11 @@ old renderer, the SDK does not escape that region. Full physical remote, pointer
 VoiceOver and Reduce Motion preference testing still require interactive testing.
 
 ## Tests
+
+Version 0.1.1 restores slide visibility, padded travel, signed
+direct offsets, cross-anchor draw order, and exit-space retention while preserving
+0.1.0 measured-height stacking. See the
+[presentation contract and reproducible comparison](docs/PRESENTATION-COMPATIBILITY.md).
 
 ```bash
 swift test

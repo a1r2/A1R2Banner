@@ -53,46 +53,152 @@ struct BannerContentLayout: Layout {
     }
 }
 
-/// Positions one banner or an oldest-first bottom pile within the host region.
-/// Each next banner receives the remaining height. Actual measured heights drive
-/// placement, so wrapping and Dynamic Type do not depend on frame-height guesses.
+struct BannerPositionKey: LayoutValueKey {
+    static let defaultValue: BannerPosition = .topLeading
+}
+struct BannerStacksKey: LayoutValueKey {
+    static let defaultValue = false
+}
+
+/// Measured placement only. Subviews remain in enqueue order for drawing, while
+/// each bottom position accumulates its own actual content heights.
 struct BannerRegionLayout: Layout {
-    var position: BannerPosition
+    var position: BannerPosition? = nil
     var spacing: CGFloat = 16
-    var offset: CGFloat = 0
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let idealWidth = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
         let width = BannerSizing.dimension(proposal.width, fallback: idealWidth + 40)
         let innerWidth = max(0, width - 2 * BannerSizing.inset(width))
-        let heights = subviews.map {
-            $0.sizeThatFits(ProposedViewSize(width: innerWidth, height: nil)).height
+        var used: [BannerPosition: CGFloat] = [:]
+        var height: CGFloat = 0
+        for view in subviews {
+            let anchor = position ?? view[BannerPositionKey.self]
+            let measured = view.sizeThatFits(ProposedViewSize(width: innerWidth, height: nil)).height
+            if view[BannerStacksKey.self] && !anchor.isTopAnchored {
+                let previous = used[anchor, default: 0]
+                height = max(height, previous + measured)
+                used[anchor] = previous + measured + gap
+            } else {
+                height = max(height, measured)
+            }
         }
-        let gap = BannerSizing.dimension(spacing, fallback: 16)
-        let idealHeight = heights.reduce(0, +) + CGFloat(max(0, heights.count - 1)) * gap + 40
-        return CGSize(width: width,
-                      height: BannerSizing.dimension(proposal.height,
-                          fallback: BannerSizing.dimension(idealHeight, fallback: .greatestFiniteMagnitude)))
+        return CGSize(width: width, height: BannerSizing.dimension(proposal.height, fallback: height + 40))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let dx = BannerSizing.inset(bounds.width)
-        let dy = BannerSizing.inset(bounds.height)
-        let region = bounds.insetBy(dx: dx, dy: dy)
-        let reservation = position.isTopAnchored ? offset : -offset
-        var used = min(BannerSizing.dimension(reservation, fallback: 0), region.height)
+        let region = bounds.insetBy(dx: BannerSizing.inset(bounds.width), dy: BannerSizing.inset(bounds.height))
+        var used: [BannerPosition: CGFloat] = [:]
         for view in subviews {
-            let available = ProposedViewSize(width: region.width, height: max(0, region.height - used))
+            let anchor = position ?? view[BannerPositionKey.self]
+            let stacks = view[BannerStacksKey.self] && !anchor.isTopAnchored
+            let consumed = stacks ? used[anchor, default: 0] : 0
+            let available = ProposedViewSize(width: region.width, height: max(0, region.height - consumed))
             let size = view.sizeThatFits(available)
             let x: CGFloat
-            switch position {
+            switch anchor {
             case .topLeading, .bottomLeading: x = region.minX
             case .topTrailing, .bottomTrailing: x = region.maxX - size.width
             case .topCenter, .bottomCenter: x = region.midX - size.width / 2
             }
-            let y = position.isTopAnchored ? region.minY + used : region.maxY - used - size.height
+            let y = anchor.isTopAnchored ? region.minY : region.maxY - consumed - size.height
             view.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: available)
-            used = min(region.height, used + size.height + BannerSizing.dimension(spacing, fallback: 16))
+            if stacks { used[anchor] = min(region.height, consumed + size.height + gap) }
         }
+    }
+
+    private var gap: CGFloat { BannerSizing.dimension(spacing, fallback: 16) }
+}
+
+/// Drawing and interaction move together; this transform never changes the
+/// measured footprint. The historical move envelope includes 20 pt per side.
+struct BannerMotion: AnimatableModifier {
+    var progress: CGFloat
+    var edge: Edge
+    var direction: LayoutDirection
+    var offset: CGFloat
+    var reduceMotion: Bool
+    var isDrawing = true
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(progress, offset) }
+        set { progress = newValue.first; offset = newValue.second }
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(BannerTranslation(progress: reduceMotion ? 0 : progress,
+                                        edge: edge, direction: direction, offset: offset))
+            .opacity(isDrawing ? (reduceMotion ? 1 - progress : 1) : 0)
+            .allowsHitTesting(isDrawing)
+            .anchorPreference(key: BannerHitAnchors.self, value: .bounds) {
+                isDrawing ? [BannerHitAnchor(bounds: $0, movement: BannerTranslation(
+                    progress: reduceMotion ? 0 : progress, edge: edge, direction: direction, offset: offset))] : []
+            }
+            .transaction { $0.animation = nil }
+    }
+}
+
+struct BannerTranslation: GeometryEffect {
+    var progress: CGFloat
+    var edge: Edge
+    var direction: LayoutDirection
+    var offset: CGFloat
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let delta = translation(size: size)
+        return ProjectionTransform(CGAffineTransform(translationX: delta.width, y: delta.height))
+    }
+
+    func translation(size: CGSize) -> CGSize {
+        let horizontal: CGFloat = edge == .leading ? -(size.width + 40) : edge == .trailing ? size.width + 40 : 0
+        let dx = horizontal * (direction == .leftToRight ? 1 : -1) * progress
+        let dy = (edge == .top ? -(size.height + 40) : edge == .bottom ? size.height + 40 : 0) * progress
+        return CGSize(width: dx, height: dy + offset)
+    }
+}
+
+struct BannerHitAnchor {
+    var bounds: Anchor<CGRect>
+    var movement: BannerTranslation
+}
+struct BannerHitAnchors: PreferenceKey {
+    static let defaultValue: [BannerHitAnchor] = []
+    static func reduce(value: inout [BannerHitAnchor], nextValue: () -> [BannerHitAnchor]) {
+        value += nextValue()
+    }
+}
+private struct BannerHitRects: PreferenceKey {
+    static let defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+
+/// Resolves moving content anchors inside the host. Geometry is read only for
+/// interaction: these rectangles never participate in measurement or placement.
+struct BannerHostHits: ViewModifier {
+    @State private var rects: [CGRect] = []
+    func body(content: Content) -> some View {
+        content
+            .backgroundPreferenceValue(BannerHitAnchors.self) { anchors in
+                GeometryReader { geometry in
+                    Color.clear.preference(key: BannerHitRects.self, value: anchors.compactMap {
+                        let rest = geometry[$0.bounds]
+                        let delta = $0.movement.translation(size: rest.size)
+                        let rect = rest.offsetBy(dx: delta.width, dy: delta.height)
+                            .intersection(CGRect(origin: .zero, size: geometry.size))
+                        return rect.isNull || rect.isEmpty ? nil : rect
+                    })
+                }.allowsHitTesting(false)
+            }
+            .onPreferenceChange(BannerHitRects.self) { rects = $0 }
+            .contentShape(BannerHitShape(rects: rects))
+            .allowsHitTesting(!rects.isEmpty)
+    }
+}
+
+private struct BannerHitShape: Shape {
+    var rects: [CGRect]
+    func path(in bounds: CGRect) -> Path {
+        Path { path in for rect in rects { path.addRect(rect) } }
     }
 }

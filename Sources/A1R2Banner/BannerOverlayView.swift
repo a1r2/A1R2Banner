@@ -15,22 +15,17 @@ struct BannerOverlayView<Banner: BannerPresentable>: View {
     @ObservedObject var manager: BannerManager<Banner>
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let positions: [BannerPosition] = [
-        .topLeading, .topCenter, .topTrailing, .bottomLeading, .bottomCenter, .bottomTrailing
-    ]
-
     var body: some View {
-        ZStack {
-            ForEach(positions, id: \.self) { position in
-                BannerRegionLayout(position: position, spacing: manager.layoutStackGap) {
-                    ForEach(manager.items.filter { $0.banner.bannerProperties.position == position }) { item in
-                        BannerPresentation(banner: item.banner, duration: item.duration)
-                    }
-                }
-                .clipped()
+        BannerRegionLayout(spacing: manager.layoutStackGap) {
+            ForEach(manager.items.sorted { $0.when < $1.when }) { item in
+                BannerPresentation(banner: item.banner, duration: item.duration)
+                    .layoutValue(key: BannerPositionKey.self, value: item.banner.bannerProperties.position)
+                    .layoutValue(key: BannerStacksKey.self, value: item.banner.bannerProperties.stacks)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .modifier(BannerHostHits())
         .transaction { if reduceMotion { $0.disablesAnimations = true } }
     }
 }
