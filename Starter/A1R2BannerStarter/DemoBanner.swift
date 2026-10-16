@@ -20,7 +20,6 @@ extension DemoBanner: BannerPresentable {
                 cornerRadius: 18,
                 fillColor: .blue,
                 showFrom: .trailing,
-                renderScale: 1,     // laid out natively — no legacy downscale
                 stacks: true        // opt into bottom piling (see the "Stack three" button)
             )
         }
@@ -42,12 +41,12 @@ struct DemoBannerView: View {
                 .font(.title3)
             Text(text)
                 .lineLimit(2)
-                .minimumScaleFactor(0.7)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
-        .foregroundStyle(.white)
-        .frame(width: props.frame.width, height: props.frame.height)
+        .foregroundStyle(props.textColor)
+        .padding(.vertical, 12)
+        .frame(maxWidth: props.frame.width)
         .background(props.fillColor.opacity(0.95),
                     in: RoundedRectangle(cornerRadius: props.cornerRadius))
     }

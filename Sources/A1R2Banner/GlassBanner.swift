@@ -31,7 +31,10 @@ public struct GlassBanner: BannerPresentable {
     public let tint: Color
     public let position: BannerPosition
     public let duration: TimeInterval
+    /// Shared foreground for title, subtitle and symbol.
+    public let textColor: Color
 
+    /// Original initializer retained, including its function-reference signature.
     public init(
         title: String,
         subtitle: String? = nil,
@@ -40,24 +43,40 @@ public struct GlassBanner: BannerPresentable {
         position: BannerPosition = .topCenter,
         duration: TimeInterval = 3
     ) {
+        self.init(title: title, subtitle: subtitle, systemImage: systemImage,
+                  tint: tint, position: position, duration: duration, textColor: .white)
+    }
+
+    /// Explicit semantic foreground override for title, subtitle and symbol.
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        systemImage: String? = nil,
+        tint: Color = .accentColor,
+        position: BannerPosition = .topCenter,
+        duration: TimeInterval = 3,
+        textColor: Color
+    ) {
         self.title = title
         self.subtitle = subtitle
         self.systemImage = systemImage
         self.tint = tint
         self.position = position
         self.duration = duration
+        self.textColor = textColor
     }
 
     public var bannerProperties: BannerProperties {
         BannerProperties(
-            frame: CGSize(width: 0, height: 64),  // content self-sizes; height feeds stacking math
+            frame: CGSize(width: 0, height: 64),  // content self-sizes; retained legacy offset hint
             duration: duration,
             position: position,
             cornerRadius: 28,
             fillColor: tint,
             showAnimation: .smooth(duration: 0.4),
             showFrom: .top,
-            renderScale: 1,   // laid out natively for iOS — no legacy downscale
+            textColor: textColor,
+            renderScale: 1,   // native points on every platform
             stacks: false,    // an Island-style notice is a singleton — latest replaces
             accessibilityLabel: [title, subtitle].compactMap { $0 }.joined(separator: ", ")
         )

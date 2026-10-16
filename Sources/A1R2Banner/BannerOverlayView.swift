@@ -10,18 +10,27 @@
 
 import SwiftUI
 
-/// The stack of currently-queued banners, oldest first. Each `BannerView` fills
-/// the overlay and pins itself to its own corner (safe-area aware), so the
-/// container tracks any size — rotation, split view, or a resized macOS window.
+/// Each anchor has its own measured region. The host owns safe-area policy.
 struct BannerOverlayView<Banner: BannerPresentable>: View {
     @ObservedObject var manager: BannerManager<Banner>
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let positions: [BannerPosition] = [
+        .topLeading, .topCenter, .topTrailing, .bottomLeading, .bottomCenter, .bottomTrailing
+    ]
 
     var body: some View {
         ZStack {
-            ForEach(manager.items.sorted { $0.when < $1.when }) { item in
-                BannerView(banner: item.banner, duration: item.duration, stackOffset: item.offset)
+            ForEach(positions, id: \.self) { position in
+                BannerRegionLayout(position: position, spacing: manager.layoutStackGap) {
+                    ForEach(manager.items.filter { $0.banner.bannerProperties.position == position }) { item in
+                        BannerPresentation(banner: item.banner, duration: item.duration)
+                    }
+                }
+                .clipped()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transaction { if reduceMotion { $0.disablesAnimations = true } }
     }
 }

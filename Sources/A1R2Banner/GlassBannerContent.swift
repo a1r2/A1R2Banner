@@ -40,9 +40,7 @@ public struct GlassBannerContent: View {
             HStack(spacing: 10) {
                 if let symbol = banner.systemImage {
                     Image(systemName: symbol)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(banner.tint)
-                        .frame(width: 30, height: 30)
+                        .font(.headline.weight(.bold))
                         .transition(.scale.combined(with: .opacity))
                 }
 
@@ -50,19 +48,20 @@ public struct GlassBannerContent: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(banner.title)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
                         if let subtitle = banner.subtitle {
                             Text(subtitle)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
                         }
                     }
-                    .fixedSize()
+                    .layoutPriority(1)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
                 }
             }
+            .foregroundStyle(banner.textColor)
             .padding(.horizontal, expanded ? 18 : 12)
             .padding(.vertical, 12)
+            // A dark backing keeps the default white foreground readable over light hosts.
+            .background(.black.opacity(0.65), in: .capsule)
             // The signature: real Liquid Glass, tinted, and interactive (flexes to touch).
             .glassEffect(.regular.tint(banner.tint.opacity(0.18)).interactive(), in: .capsule)
             .overlay { sheenOverlay }

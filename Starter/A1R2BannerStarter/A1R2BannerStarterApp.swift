@@ -7,7 +7,11 @@ import SwiftUI
 struct A1R2BannerStarterApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if ProcessInfo.processInfo.arguments.contains("--layout-review") {
+                LayoutGallery()
+            } else {
+                ContentView()
+            }
         }
     }
 }

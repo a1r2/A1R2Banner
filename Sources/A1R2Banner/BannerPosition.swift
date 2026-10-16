@@ -10,7 +10,7 @@
 
 import SwiftUI
 
-/// Where a banner anchors on screen. Replaces the implicit corner grouping that
+/// Where a banner anchors within its host region. Replaces the implicit corner grouping that
 /// used to be switched on the app's banner enum.
 public enum BannerPosition: Sendable, Hashable {
     case topLeading
@@ -18,7 +18,7 @@ public enum BannerPosition: Sendable, Hashable {
     case bottomLeading
     case bottomTrailing
     case bottomCenter
-    /// Top edge, horizontally centered — the iPhone Dynamic-Island slot.
+    /// Top edge of the host region, horizontally centered.
     case topCenter
 }
 

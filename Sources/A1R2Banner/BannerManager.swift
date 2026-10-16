@@ -32,7 +32,7 @@ enum BannerStackMetrics {
 ///
 /// Generic over the host's banner value: `DDLogger` is replaced by an injectable
 /// `log` closure and any host-specific write-only counters are omitted. The
-/// offset math is preserved byte-for-byte.
+/// offsets remain as legacy model estimates; the renderer uses measured heights.
 @MainActor
 public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
     @Published public private(set) var items: [BannerItem<Banner>] = []
@@ -41,6 +41,7 @@ public final class BannerManager<Banner: BannerPresentable>: ObservableObject {
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private let log: (String) -> Void
     private let stackGap: CGFloat
+    var layoutStackGap: CGFloat { stackGap }
 
     /// - Parameter stackGap: vertical gap between piled banners (default 16 pt).
     public init(stackGap: CGFloat = 16, log: @escaping (String) -> Void = { _ in }) {
